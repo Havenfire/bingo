@@ -1,0 +1,26 @@
+cookie:
+  name: bingocookie
+  key: YOUR_SECRET_RANDOM_KEY_HERE
+  expiry_days: 30
+
+credentials:
+  usernames:
+    # Example user
+    alice:
+      email: alice@example.com
+      first_name: Alice
+      last_name: Liddell
+      password: password123  # will be hashed automatically
+      roles:
+        - user
+    bob:
+      email: bob@example.com
+      first_name: Bob
+      last_name: Builder
+      password: builderPass!  # will be hashed automatically
+      roles:
+        - admin
+
+pre_authorized:
+  emails:
+    - bsliu24@gmail.com
