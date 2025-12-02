@@ -3,31 +3,11 @@ import json
 import os
 from streamlit_extras.stylable_container import stylable_container
 from streamlit_option_menu import option_menu
-import yaml
-import streamlit_authenticator as stauth
-from yaml.loader import SafeLoader
-
-import secrets
-secrets.token_hex(16)
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(script_dir, 'config.yaml')
-
-with open(config_path) as file:
-    config = yaml.load(file, Loader=SafeLoader)
-authenticator = stauth.Authenticate(
-    config['credentials'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
-)
-try:
-    authenticator.login()
-except Exception as e:
-    st.error(e)
 
 BOARD_SIZE = 5
 FILENAME = "bingo_board.json"
+
+os.makedirs("boards", exist_ok=True)
 
 
 def make_empty_board():
@@ -37,22 +17,30 @@ def make_empty_board():
 def make_empty_marks():
     return [[False for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 
-
 def save_board(board, marked):
-    with open(FILENAME, "w") as f:
+    filename = user_file()
+    if filename is None:
+        st.warning("Login required to save.")
+        return
+
+    os.makedirs("boards", exist_ok=True)
+    with open(filename, "w") as f:
         json.dump({"board": board, "marked": marked}, f)
     st.success("Board saved!")
 
 
 def load_board():
-    if os.path.exists(FILENAME):
+    filename = user_file()
+    if filename and os.path.exists(filename):
         try:
-            with open(FILENAME, "r") as f:
+            with open(filename, "r") as f:
                 data = json.load(f)
             return data.get("board", make_empty_board()), data.get("marked", make_empty_marks())
         except Exception:
             return make_empty_board(), make_empty_marks()
+
     return make_empty_board(), make_empty_marks()
+
 
 
 def check_bingo(marked):
@@ -69,14 +57,62 @@ def check_bingo(marked):
         wins.append([(i, BOARD_SIZE - 1 - i) for i in range(BOARD_SIZE)])
     return wins
 
+def user_file():
+    """Creates a safe filename based on email."""
+    email = st.session_state.get("user")
+    if not email:
+        return None
+    safe = email.replace("@", "_at_").replace(".", "_dot_")
+    return f"boards/{safe}.json"
+
 
 # --- Session state ---
 if "board" not in st.session_state:
-    board, marked = load_board()
-    st.session_state.board = board
-    st.session_state.marked = marked
+    st.session_state.board = make_empty_board()
+
+if "marked" not in st.session_state:
+    st.session_state.marked = make_empty_marks()
+
 if "enabled" not in st.session_state:
     st.session_state.enabled = False
+
+if "user" not in st.session_state:
+    st.session_state.user = None  # Logged-out by default
+
+
+# ---- Global Styling ----
+st.markdown("""
+    <style>
+        /* Page background */
+        .stApp {
+            background: linear-gradient(135deg, #f3f4f6 0%, #dbeafe 100%);
+        }
+
+        /* Soften default text colors */
+        html, body, [class*="css"]  {
+            color: #1f2937 !important;
+        }
+
+        /* Card-like look for expanders and containers */
+        .st-expander, .stContainer, .block-container {
+            background: rgba(255, 255, 255, 0.65) !important;
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+        }
+
+        /* Cleaner top padding */
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2.5rem !important;
+        }
+
+        /* Menu bar polish */
+        .nav-item > a {
+            font-weight: 600 !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 
 # --- Navigation Menu ---
@@ -90,7 +126,27 @@ page = option_menu(
     key="nav_menu"
 )
 
-st.title("🎯 5×5 Bingo Board")
+st.title("New Year's Bingo Board")
+
+
+with st.expander("🔐 Login / Save Progress", expanded=False):
+    if st.session_state.user:
+        st.write(f"Logged in as **{st.session_state.user}**")
+        if st.button("Log Out"):
+            st.session_state.user = None
+            st.rerun()
+    else:
+        email = st.text_input("Email to link your board")
+        if st.button("Log In"):
+            if email.strip():
+                st.session_state.user = email.strip().lower()
+                # Load this user's saved board (if exists)
+                st.session_state.board, st.session_state.marked = load_board()
+                st.success(f"Logged in as {email}")
+                st.rerun()
+            else:
+                st.warning("Enter a valid email.")
+
 
 # --- Page Logic ---
 if page == "Your Board":

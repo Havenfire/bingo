@@ -1,1 +1,0 @@
-auth_api_key = "h8xov8xa1k5cw8g7i2zerl3auyph0uwv"
