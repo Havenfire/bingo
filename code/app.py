@@ -26,7 +26,6 @@ def save_board(board, marked):
     os.makedirs("boards", exist_ok=True)
     with open(filename, "w") as f:
         json.dump({"board": board, "marked": marked}, f)
-    st.success("Board saved!")
 
 
 def load_board():
@@ -41,6 +40,10 @@ def load_board():
 
     return make_empty_board(), make_empty_marks()
 
+def autosave():
+    """Saves immediately if the user is logged in."""
+    if st.session_state.get("user"):
+        save_board(st.session_state.board, st.session_state.marked)
 
 
 def check_bingo(marked):
@@ -65,19 +68,72 @@ def user_file():
     safe = email.replace("@", "_at_").replace(".", "_dot_")
     return f"boards/{safe}.json"
 
+import auth_service as auth
 
-# --- Session state ---
-if "board" not in st.session_state:
-    st.session_state.board = make_empty_board()
+@st.dialog("Log In", width="small")
+def login_dialog():
+    email = st.text_input("Email", key="login_email")
+    password = st.text_input("Password", type="password", key="login_password")
+    if st.button("Log In", key="login_submit"):
+        ok, msg = auth.authenticate(email, password)
+        if ok:
+            # Normalize email and store user
+            st.session_state.user = email.strip().lower()
 
-if "marked" not in st.session_state:
-    st.session_state.marked = make_empty_marks()
+            # Load existing saved board OR create/attach a new one
+            filename = user_file()
+            if os.path.exists(filename):
+                # Load user's saved board
+                st.session_state.board, st.session_state.marked = load_board()
+            else:
+                # Make a fresh board and save it immediately
+                st.session_state.board = make_empty_board()
+                st.session_state.marked = make_empty_marks()
+                save_board(st.session_state.board, st.session_state.marked)
+
+            st.success("Login successful.")
+            st.rerun()
+        else:
+            st.error(msg)
+
+
+@st.dialog("Create Account", width="small")
+def register_dialog():
+    email = st.text_input("Email", key="reg_email")
+    password = st.text_input("Password", type="password", key="reg_password")
+    confirm = st.text_input("Confirm Password", type="password", key="reg_confirm")
+    if st.button("Register", key="reg_submit"):
+        if password != confirm:
+            st.error("Passwords do not match.")
+        else:
+            ok, msg = auth.register_user(email, password)
+            if ok:
+                st.success("Registration successful. Please log in.")
+                st.rerun()
+            else:
+                st.error(msg)
+
+
 
 if "enabled" not in st.session_state:
     st.session_state.enabled = False
 
+# --- Session state ---
 if "user" not in st.session_state:
-    st.session_state.user = None  # Logged-out by default
+    st.session_state.user = None
+
+# Only initialize board + marks when NOT logged in
+if st.session_state.user is None:
+    if "board" not in st.session_state:
+        st.session_state.board = make_empty_board()
+    if "marked" not in st.session_state:
+        st.session_state.marked = make_empty_marks()
+else:
+    # User is logged in → auto-load from disk if not already done
+    if "board_loaded" not in st.session_state:
+        st.session_state.board, st.session_state.marked = load_board()
+        st.session_state.board_loaded = True
+
 
 
 # ---- Global Styling ----
@@ -127,25 +183,23 @@ page = option_menu(
 )
 
 st.title("New Year's Bingo Board")
+# --- UI: Show login/register buttons or logout ---
+st.markdown("### 🔐 Account")
 
-
-with st.expander("🔐 Login / Save Progress", expanded=False):
-    if st.session_state.user:
-        st.write(f"Logged in as **{st.session_state.user}**")
-        if st.button("Log Out"):
-            st.session_state.user = None
-            st.rerun()
-    else:
-        email = st.text_input("Email to link your board")
+if st.session_state.user:
+    st.write(f"Logged in as **{st.session_state.user}**")
+    if st.button("Log Out"):
+        st.session_state.user = None
+        st.rerun()
+else:
+    c1, c2 = st.columns(2)
+    with c1:
         if st.button("Log In"):
-            if email.strip():
-                st.session_state.user = email.strip().lower()
-                # Load this user's saved board (if exists)
-                st.session_state.board, st.session_state.marked = load_board()
-                st.success(f"Logged in as {email}")
-                st.rerun()
-            else:
-                st.warning("Enter a valid email.")
+            login_dialog()
+    with c2:
+        if st.button("Register"):
+            register_dialog()
+
 
 
 # --- Page Logic ---
@@ -155,21 +209,13 @@ if page == "Your Board":
         st.subheader("Step 1 — Fill out your board")
 
         with st.container():
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col1:
-                if st.button("✅ Enable Board"):
-                    if all(cell.strip() for row in st.session_state.board for cell in row):
-                        st.session_state.enabled = True
-                        st.rerun()
-                    else:
-                        st.warning("Please fill every square before enabling the board.")
-            with col2:
-                if st.button("💾 Save Board"):
-                    save_board(st.session_state.board, st.session_state.marked)
-            with col3:
-                if st.button("⚙️ Settings"):
-                    st.session_state.nav_menu = "Settings"
+            if st.button("✅ Enable Board"):
+                if all(cell.strip() for row in st.session_state.board for cell in row):
+                    st.session_state.enabled = True
                     st.rerun()
+                else:
+                    st.warning("Please fill every square before enabling the board.")
+
 
         for i in range(BOARD_SIZE):
             cols = st.columns(BOARD_SIZE, gap=None)
@@ -202,7 +248,7 @@ if page == "Your Board":
                             label { display: none; }
                         """,
                     ):
-                        st.session_state.board[i][j] = st.text_area(
+                        new_text = st.text_area(
                             label="",
                             value=st.session_state.board[i][j],
                             key=key,
@@ -211,6 +257,10 @@ if page == "Your Board":
                             label_visibility="collapsed",
                             max_chars=55,
                         )
+                        # Auto-save only when the text actually changes
+                        if new_text != st.session_state.board[i][j]:
+                            st.session_state.board[i][j] = new_text
+                            autosave()
 
     else:
         st.subheader("Step 2 — Play Mode")
@@ -253,6 +303,7 @@ if page == "Your Board":
                         clicked = st.button(label, key=f"btn_{i}_{j}")
                         if clicked:
                             st.session_state.marked[i][j] = not st.session_state.marked[i][j]
+                            autosave()
                             st.rerun()
 
         if has_bingo:
@@ -266,6 +317,7 @@ if page == "Your Board":
         with c2:
             if st.button("Clear Marks"):
                 st.session_state.marked = make_empty_marks()
+                autosave()
                 st.rerun()
 
 
