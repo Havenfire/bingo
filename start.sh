@@ -1,14 +1,20 @@
 if [ ! -d "bingo_venv" ]; then
     echo "Creating virtual environment..."
-    python -m venv bingo_venv
+    python3 -m venv bingo_venv
 fi
-source bingo_venv/Scripts/activate
+
+# Cross-platform activate
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    source bingo_venv/Scripts/activate
+else
+    source bingo_venv/bin/activate
+fi
+
 if [ -f "requirements.txt" ]; then
     echo "Installing dependencies..."
-    python.exe -m pip install --upgrade pip
+    python -m pip install --upgrade pip
     pip install uv
     uv pip install -r requirements.txt
 fi
-
 echo "Starting app..."
 streamlit run code/app.py
