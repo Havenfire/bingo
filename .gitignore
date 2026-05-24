@@ -1,3 +1,5 @@
-bingo_venv
+bingo_venv/
 users.json
-boards/bsliu24_at_gmail_dot_com.json
+boards/
+__pycache__/
+*.pyc

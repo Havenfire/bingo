@@ -1,6 +1,6 @@
-import streamlit as st
 import json
 import os
+import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
 from streamlit_option_menu import option_menu
 
@@ -17,15 +17,25 @@ def make_empty_board():
 def make_empty_marks():
     return [[False for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 
+
+def save_json_atomic(filename, data):
+    dirpath = os.path.dirname(filename)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)
+
+    tmp_path = f"{filename}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp_path, filename)
+
+
 def save_board(board, marked):
     filename = user_file()
     if filename is None:
         st.warning("Login required to save.")
         return
 
-    os.makedirs("boards", exist_ok=True)
-    with open(filename, "w") as f:
-        json.dump({"board": board, "marked": marked}, f)
+    save_json_atomic(filename, {"board": board, "marked": marked})
 
 
 def load_board():
@@ -190,6 +200,9 @@ if st.session_state.user:
     st.write(f"Logged in as **{st.session_state.user}**")
     if st.button("Log Out"):
         st.session_state.user = None
+        st.session_state.board_loaded = False
+        st.session_state.board = make_empty_board()
+        st.session_state.marked = make_empty_marks()
         st.rerun()
 else:
     c1, c2 = st.columns(2)

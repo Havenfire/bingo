@@ -13,8 +13,7 @@ fi
 if [ -f "requirements.txt" ]; then
     echo "Installing dependencies..."
     python -m pip install --upgrade pip
-    pip install uv
-    uv pip install -r requirements.txt
+    python -m pip install -r requirements.txt
 fi
 echo "Starting app..."
 streamlit run code/app.py
